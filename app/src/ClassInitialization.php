@@ -7,6 +7,7 @@ use Guzaba2\Base\Base;
 use Guzaba2\Event\Event;
 use Guzaba2\Kernel\Interfaces\ClassInitializationInterface;
 use Guzaba2\Mvc\ExecutorMiddleware;
+use Guzaba2\Orm\ActiveRecord;
 use GuzabaPlatform\Platform\Application\Middlewares;
 use GuzabaPlatform\RequestCaching\CachingMiddleware;
 
@@ -38,12 +39,19 @@ class ClassInitialization extends Base implements ClassInitializationInterface
         //self::get_service('Middlewares')->add($CachingMiddleware, ExecutorMiddleware::class);
         //instead rely on the events.
         $Events = self::get_service('Events');
-        $Callback = static function(Event $Event) : void
+        $CachingMiddleware = new CachingMiddleware();
+        $MiddlwareCallback = static function(Event $Event) use ($CachingMiddleware) : void
         {
-            $CachingMiddleware = new CachingMiddleware();
             $Middlewares = $Event->get_subject();
             $Middlewares->add($CachingMiddleware, ExecutorMiddleware::class);
         };
-        $Events->add_class_callback(Middlewares::class, '_after_setup', $Callback);
+        $Events->add_class_callback(Middlewares::class, '_after_setup', $MiddlwareCallback);
+
+        //this would work only when running with a single worker
+        //in multiworker environment $CachingMiddleware must rely on swoole table (or other shared memory mechanism)
+        $Events->add_class_callback(ActiveRecord::class, '_after_read', [$CachingMiddleware, 'active_record_read_event_handler']);
+        //$Events->add_class_callback(ActiveRecord::class, '_after_save', [$CachingMiddleware, 'active_record_update_event_handler']);
+        //$Events->add_class_callback(ActiveRecord::class, '_after_delete', [$CachingMiddleware, 'active_record_update_event_handler']);
+
     }
 }
