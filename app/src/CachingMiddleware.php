@@ -69,7 +69,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         $MetaStore = self::get_service('OrmMetaStore');
         //cache only GET and OPTIONS methods
         if (in_array($method, ['GET', 'OPTIONS'] )) {
-            if (isset($this->cache[$path][$method])) {
+            if (isset($this->cache[$path][$method]['response'])) {
                 //check were any of the user ORM objects updated
                 //including were there any new classes of the used ones created
                 $cache_ok = TRUE;
