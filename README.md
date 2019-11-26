@@ -1,8 +1,8 @@
 # GuzabaPlatform\RequestCaching
 
-Request Caching component for GuzabaPlatform.
+Request Caching component for [GuzabaPlatform](https://github.com/AzonMedia/guzaba-platform).
 
-Caches the request responses if the used ActiveRecord objects in the request were not modified (or no new ones were created from the same classes),
+Caches the request responses if the used ActiveRecord objects in the request were not modified (or no new ones were created from the same classes).
 
 ## Installation and configuration
 
@@ -23,7 +23,9 @@ And if initialized successfully:
     ...
     - GuzabaPlatform\RequestCaching\CachingMiddleware - guzaba.source:///home/local/PROJECTS/guzaba-platform-marketplace/guzaba-platform-marketplace/vendor/guzaba-platform/request-caching/app/src/CachingMiddleware.php
     ...
-
-[2.022722 Startup] Starting Swoole HTTP server on 0.0.0.0:8081 at 2019-11-26 15:54:00 UTC
-[2.022744 Startup] Static serving is enabled and document_root is set to /home/local/PROJECTS/guzaba-platform-marketplace/guzaba-platform-marketplace/app/public/
 ```
+
+## Additional details
+
+It injects a new middleware - GuzabaPlatform\RequestCaching\CachingMiddleware and registeres a callback on ActiveRecord:_after_read event.
+It also uses the OrmMetaStore service to obtain the last modification times of the objects (and creation of new ones using the class meta data).
