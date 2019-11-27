@@ -25,6 +25,12 @@ And if initialized successfully:
     ...
 ```
 
+## Preventing requests from beign cached
+
+There are two ways to prevent a request to be cached:
+- the $Request to contain an attributed "no_cache"
+- the $Response to contain a header "pragma: no-cache" or "cache-control: no-cache"
+
 ## Additional details
 
 It injects a new middleware - GuzabaPlatform\RequestCaching\CachingMiddleware and registeres a callback on ActiveRecord:_after_read event.

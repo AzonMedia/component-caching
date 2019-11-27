@@ -22,7 +22,9 @@ use Psr\Log\LogLevel;
 
 /**
  * Class CachingMiddleware
- * Uses the OrmMetaStore service to access the modification times of the objects
+ * Uses the OrmMetaStore service to access the modification times of the objects.
+ * If a request must not be chached it should include an attribute "no_cache".
+ * If a response must not be cached it must include header "pragma: no-cache" or "cache-control: no-cache".
  * @package GuzabaPlatform\RequestCaching
  */
 class CachingMiddleware extends Base implements MiddlewareInterface
@@ -37,21 +39,9 @@ class CachingMiddleware extends Base implements MiddlewareInterface
 
     private array $cache = [];
 
-    private iterable $routes_to_cache = [];
 
     /**
-     * CachingMiddleware constructor.
-     * @param array $do_not_cache
-     */
-    public function __construct(iterable $routes_to_cache = [])
-    {
-        $this->routes_to_cache = $routes_to_cache;
-        // TODO implement - check the cache only for the routes that are to be cached
-    }
-
-    /**
-     *
-     *
+     * Middleware processing method
      * @param ServerRequestInterface $Request
      * @param RequestHandlerInterface $Handler
      * @return ResponseInterface
@@ -73,6 +63,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
                 //check were any of the user ORM objects updated
                 //including were there any new classes of the used ones created
                 $cache_ok = TRUE;
+                $any_last_update_microtime = 0;
                 foreach($this->cache[$path][$method]['used_instances'] as $class => $instance_data) {
                     foreach ($instance_data as $object_lookup_index=>$last_update_microtime) {
                         $object_lookup_index = (string) $object_lookup_index;//TODO - check why is this cast needed - it should already be string
@@ -84,6 +75,9 @@ class CachingMiddleware extends Base implements MiddlewareInterface
                             //break;//do not break - update the data instead
                         }
                         $this->cache[$path][$method]['used_instances'][$class][$object_lookup_index] = $store_last_update_microtime;
+                        if ($store_last_update_microtime > $any_last_update_microtime) {
+                            $any_last_update_microtime = $store_last_update_microtime;
+                        }
                     }
                 }
                 //of the existing objects nothing was updated or deleted... lets check is there any new object
@@ -96,12 +90,18 @@ class CachingMiddleware extends Base implements MiddlewareInterface
                         //break;//do not break - update the data instead
                     }
                     $this->cache[$path][$method]['used_classes'][$class] = $store_class_last_update_microtime;
+                    if ($store_class_last_update_microtime > $any_last_update_microtime) {
+                        $any_last_update_microtime = $store_class_last_update_microtime;
+                    }
                 }
                 //}
 
                 if ($cache_ok) {
                     Kernel::log(sprintf('%s: Request is cached and served by the CachingMiddleware.', __CLASS__, $class, current($primary_index)), LogLevel::DEBUG);
-                    return $this->cache[$path][$method]['response'];
+                    $Response = $this->cache[$path][$method]['response'];
+                    $any_last_update_time = (int) round( $any_last_update_microtime / 1_000_000);
+                    $Response = $Response->withHeader('last-modified', gmdate('D, d M Y H:i:s ', $any_last_update_time) . 'GMT' );
+                    return $Response;
                 }
 
             }
@@ -109,12 +109,19 @@ class CachingMiddleware extends Base implements MiddlewareInterface
 
         $Response = $Handler->handle($Request);
 
-        $this->cache[$path][$method]['response'] = $Response;
+        if ($this->response_allows_caching($Response)) {
+            $this->cache[$path][$method]['response'] = $Response;
+        }
+
 
         return $Response;
     }
 
-
+    /**
+     * The event handler for ActiveRecord:_after_read
+     * @param Event $Event
+     * @throws \Guzaba2\Base\Exceptions\RunTimeException
+     */
     public function active_record_read_event_handler(Event $Event) : void
     {
         $Request = Coroutine::getRequest();
@@ -165,10 +172,39 @@ class CachingMiddleware extends Base implements MiddlewareInterface
 
     }
 
-    /*
-    public function active_record_update_event_handler(Event $Event) : void
+    /**
+     * Whether the Response from the next middleware allows for caching.
+     * If the response contains a "pragma: no-cache" or "cache-control: no-cache" this middleware will not cache
+     * @param ResponseInterface $Response
+     * @return bool
+     */
+    private function response_allows_caching(ResponseInterface $Response) : bool
     {
 
+        $pragma_headers = $Response->getHeader('pragma');
+        foreach ($pragma_headers as $header_value) {
+            if (strtolower($header_value) === 'no-cache') {
+                return FALSE;
+            }
+        }
+        $cache_control_headers = $Response->getHeader('cache-control');
+        foreach ($cache_control_headers as $header_value) {
+            if (strtolower($header_value) === 'no-cache') {
+                return FALSE;
+            }
+        }
+        return TRUE;
     }
-    */
+
+    /**
+     * Checks does the Request allows for caching. If the Request has an attribute "no_cache" caching will not be allowed.
+     * This attribute can be set from a previous middleware
+     * @param RequestInterface $Request
+     * @return bool
+     */
+    private function request_allows_caching(RequestInterface $Request) : bool
+    {
+        return ! $Request->getAttribute('no_cache', FALSE);
+    }
+
 }
