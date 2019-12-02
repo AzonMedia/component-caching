@@ -47,9 +47,14 @@ class ClassInitialization extends Base implements ClassInitializationInterface
         };
         $Events->add_class_callback(Middlewares::class, '_after_setup', $MiddlwareCallback);
 
-        //this would work only when running with a single worker
+
         //in multiworker environment $CachingMiddleware must rely on swoole table (or other shared memory mechanism)
+        //we also need the _before_read to catch any classes that were attempted to be read but were not found (or no permissions)
+        $Events->add_class_callback(ActiveRecord::class, '_before_read', [$CachingMiddleware, 'active_record_read_event_handler']);
         $Events->add_class_callback(ActiveRecord::class, '_after_read', [$CachingMiddleware, 'active_record_read_event_handler']);
+
+
+        //this would work only when running with a single worker
         //$Events->add_class_callback(ActiveRecord::class, '_after_save', [$CachingMiddleware, 'active_record_update_event_handler']);
         //$Events->add_class_callback(ActiveRecord::class, '_after_delete', [$CachingMiddleware, 'active_record_update_event_handler']);
 
