@@ -40,7 +40,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         'services' => [
             'OrmMetaStore',
             'AuthorizationProvider',
-            //'CurrentUser',//no longer used
+            //'CurrentUser',//no longer used - the user_id is retrieved from the JWT
         ],
     ];
 
@@ -76,9 +76,6 @@ class CachingMiddleware extends Base implements MiddlewareInterface
     public function process(ServerRequestInterface $Request, RequestHandlerInterface $Handler) : ResponseInterface
     {
 
-        //this is a very basic implementation - just checks are there any updated ORM objects since the last run
-        //in future this should store the ORM objects used in each request and then check these individually and was there a new object of this type
-
         $path = $Request->getUri()->getPath();
         $method = strtoupper($Request->getMethod());
         $MetaStore = self::get_service('OrmMetaStore');
@@ -88,7 +85,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         $current_user_id = JwtToken::get_user_id_from_request($Request);
 
         if (self::request_allows_caching($Request)) {
-            
+
             if (!isset($this->cache[$path])) {
                 $this->cache[$path] = [];
             }
@@ -102,10 +99,6 @@ class CachingMiddleware extends Base implements MiddlewareInterface
                 $this->cache[$path][$method][$current_user_id]['used_classes'] = [];
             }
 
-
-
-
-            //if (isset($this->cache[$path][$method]['response'])) {
             if (isset($this->cache[$path][$method][$current_user_id]['response'])) {
                 //check were any of the user ORM objects updated
                 //including were there any new classes of the used ones created
@@ -313,6 +306,12 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         return $ret;
     }
 
+    /**
+     * Checks whether the message (Request or Response) allows caching.
+     * Checks the "pragma" and "cache-control" headers for the "no-cache" value.
+     * @param MessageInterface $Message
+     * @return bool
+     */
     private static function message_allows_caching(MessageInterface $Message) : bool
     {
         $pragma_headers = $Message->getHeader('pragma');
@@ -347,6 +346,11 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         return $ret;
     }
 
+    /**
+     * Gets the data origin based on the "data-origin" header if present in the $Response
+     * @param ResponseInterface $Response
+     * @return int
+     */
     private static function get_data_origin(ResponseInterface $Response) : int
     {
         $ret = 0;
