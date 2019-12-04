@@ -6,14 +6,18 @@ namespace GuzabaPlatform\RequestCaching;
 
 use Guzaba2\Authorization\Acl\Permission;
 use Guzaba2\Authorization\Role;
+use Guzaba2\Authorization\User;
 use Guzaba2\Base\Base;
+use Guzaba2\Base\Exceptions\LogicException;
 use Guzaba2\Coroutine\Coroutine;
+use Guzaba2\Di\Container;
 use Guzaba2\Event\Event;
 use Guzaba2\Kernel\Kernel;
 use Guzaba2\Orm\ActiveRecord;
 use Guzaba2\Orm\MetaStore\NullMetaStore;
 use Guzaba2\Orm\MetaStore\SwooleTable;
 use Guzaba2\Orm\Store\Store;
+use GuzabaPlatform\Platform\Authentication\Models\JwtToken;
 use Psr\Http\Message\MessageInterface;
 use Psr\Http\Message\RequestInterface;
 use Psr\Http\Message\ResponseInterface;
@@ -36,7 +40,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         'services' => [
             'OrmMetaStore',
             'AuthorizationProvider',
-            'CurrentUser',
+            //'CurrentUser',//no longer used
         ],
     ];
 
@@ -60,6 +64,8 @@ class CachingMiddleware extends Base implements MiddlewareInterface
     private array $cache = [];
 
 
+    private static ?array $autohrization_classes = NULL;
+
     /**
      * Middleware processing method
      * @param ServerRequestInterface $Request
@@ -77,6 +83,10 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         $method = strtoupper($Request->getMethod());
         $MetaStore = self::get_service('OrmMetaStore');
 
+        //$current_user_id = self::get_service('CurrentUser')->get()->get_id();
+        //the above is too slow and we do not really the user, only the user ID which is stored in the JWT
+        $current_user_id = JwtToken::get_user_id_from_request($Request);
+
         if (self::request_allows_caching($Request)) {
             
             if (!isset($this->cache[$path])) {
@@ -85,52 +95,68 @@ class CachingMiddleware extends Base implements MiddlewareInterface
             if (!isset($this->cache[$path][$method])) {
                 $this->cache[$path][$method] = [];
             }
-            if (!isset($this->cache[$path][$method]['used_classes'])) {
-                $this->cache[$path][$method]['used_classes'] = [];
+            if (!isset($this->cache[$path][$method][$current_user_id])) {
+                $this->cache[$path][$method][$current_user_id] = [];
             }
-            //the classes involved in the permissions should always be checked
-            if (self::uses_service('AuthorizationProvider')) {
-                foreach (self::get_service('AuthorizationProvider')::get_used_active_record_classes() as $auth_class_name) {
-                    $this->cache[$path][$method]['used_classes'][$auth_class_name] = $MetaStore->get_class_last_update_time($auth_class_name);
-                }
+            if (!isset($this->cache[$path][$method][$current_user_id]['used_classes'])) {
+                $this->cache[$path][$method][$current_user_id]['used_classes'] = [];
             }
 
-            if (isset($this->cache[$path][$method]['response'])) {
+
+
+
+            //if (isset($this->cache[$path][$method]['response'])) {
+            if (isset($this->cache[$path][$method][$current_user_id]['response'])) {
                 //check were any of the user ORM objects updated
                 //including were there any new classes of the used ones created
                 $cache_ok = TRUE;
                 $any_last_update_microtime = 0;
 
-                $data_origin = self::get_data_origin($this->cache[$path][$method]['response']);
+                $data_origin = self::get_data_origin($this->cache[$path][$method][$current_user_id]['response']);
 
-                if (count($this->cache[$path][$method]['used_instances'])) {
-                    foreach($this->cache[$path][$method]['used_instances'] as $class => $instance_data) {
-                        foreach ($instance_data as $object_lookup_index=>$last_update_microtime) {
-                            $object_lookup_index = (string) $object_lookup_index;//TODO - check why is this cast needed - it should already be string
-                            $primary_index = Store::restore_primary_index($class, $object_lookup_index);
-                            $store_last_update_microtime = $MetaStore->get_last_update_time($class, $primary_index);
-                            //if the object has been deleted or updated
-                            if (!$store_last_update_microtime || $last_update_microtime < $store_last_update_microtime) {
-                                $cache_ok = FALSE;
-                                //break;//do not break - update the data instead
-                            }
-                            $this->cache[$path][$method]['used_instances'][$class][$object_lookup_index] = $store_last_update_microtime;
-                            if ($store_last_update_microtime > $any_last_update_microtime) {
-                                $any_last_update_microtime = $store_last_update_microtime;
+                if ($data_origin === self::DATA_ORIGIN_CONCRETE_ORM) {
+                    if (count($this->cache[$path][$method][$current_user_id]['used_instances'])) {
+                        foreach ($this->cache[$path][$method][$current_user_id]['used_instances'] as $class => $instance_data) {
+                            foreach ($instance_data as $object_lookup_index => $last_update_microtime) {
+                                $object_lookup_index = (string)$object_lookup_index;//TODO - check why is this cast needed - it should already be string
+                                $primary_index = Store::restore_primary_index($class, $object_lookup_index);
+                                $store_last_update_microtime = $MetaStore->get_last_update_time($class, $primary_index);
+                                //if the object has been deleted or updated
+                                if (!$store_last_update_microtime || $last_update_microtime < $store_last_update_microtime) {
+                                    $cache_ok = FALSE;
+                                    //break;//do not break - update the data instead
+                                }
+                                $this->cache[$path][$method][$current_user_id]['used_instances'][$class][$object_lookup_index] = $store_last_update_microtime;
+                                if ($store_last_update_microtime > $any_last_update_microtime) {
+                                    $any_last_update_microtime = $store_last_update_microtime;
+                                }
                             }
                         }
+                    } else {
+                        //no AR instances were used in this request... which would mean that most probably the data is coming from another source
+                        //direct DB query or else
+                        //in either case this request should not be cached.
+                        $cache_ok = FALSE;
                     }
-                } else {
-                    //no AR instances were used in this request... which would mean that most probably the data is coming from another source
-                    //direct DB query or else
-                    //in either case this request should not be cached.
-                    $cache_ok = FALSE;
-                }
 
-                //of the existing objects nothing was updated or deleted... lets check is there any new object
-                //if ($cache_ok) {
-                if ($data_origin === self::DATA_ORIGIN_GENERIC_ORM) {
-                    foreach ($this->cache[$path][$method]['used_classes'] as $class => $class_last_update_microtime) {
+                    //check only the permission related classes
+                    foreach ($this->cache[$path][$method][$current_user_id]['used_classes'] as $class => $class_last_update_microtime) {
+                        if (!in_array($class, self::$autohrization_classes)) {
+                            continue;
+                        }
+                        $store_class_last_update_microtime = $MetaStore->get_class_last_update_time($class);
+                        if ($store_class_last_update_microtime !== NULL && $class_last_update_microtime < $store_class_last_update_microtime) {
+                            $cache_ok = FALSE;
+                            //break;//do not break - update the data instead
+                        }
+                        $this->cache[$path][$method][$current_user_id]['used_classes'][$class] = $store_class_last_update_microtime;
+                        if ($store_class_last_update_microtime > $any_last_update_microtime) {
+                            $any_last_update_microtime = $store_class_last_update_microtime;
+                        }
+                    }
+
+                } elseif ($data_origin === self::DATA_ORIGIN_GENERIC_ORM) {
+                    foreach ($this->cache[$path][$method][$current_user_id]['used_classes'] as $class => $class_last_update_microtime) {
                         $store_class_last_update_microtime = $MetaStore->get_class_last_update_time($class);
                         //there should be always data for the provided class but in case there isnt invalidate the cache
                         //no - there may be no data for the provided class if no objects were instantiated so far in this worker - for example for the Role or Permission classes
@@ -139,18 +165,19 @@ class CachingMiddleware extends Base implements MiddlewareInterface
                             $cache_ok = FALSE;
                             //break;//do not break - update the data instead
                         }
-                        $this->cache[$path][$method]['used_classes'][$class] = $store_class_last_update_microtime;
+                        $this->cache[$path][$method][$current_user_id]['used_classes'][$class] = $store_class_last_update_microtime;
                         if ($store_class_last_update_microtime > $any_last_update_microtime) {
                             $any_last_update_microtime = $store_class_last_update_microtime;
                         }
                     }
+                } else {
+                    //not supported / unreachable
+                    throw new LogicException(sprintf('An unsupported data-origin %s reached.', $data_origin));
                 }
 
-                //}
-
                 if ($cache_ok) {
-                    Kernel::log(sprintf('%s: Request is cached and served by the CachingMiddleware.', __CLASS__, $class, current($primary_index)), LogLevel::DEBUG);
-                    $Response = $this->cache[$path][$method]['response'];
+                    Kernel::log(sprintf('%s: Request is cached and served by the CachingMiddleware.', __CLASS__), LogLevel::DEBUG);
+                    $Response = $this->cache[$path][$method][$current_user_id]['response'];
                     $any_last_update_time = (int) round( $any_last_update_microtime / 1_000_000);
                     $Response = $Response->withHeader('last-modified', gmdate('D, d M Y H:i:s ', $any_last_update_time) . 'GMT' );
                     return $Response;
@@ -162,13 +189,34 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         $Response = $Handler->handle($Request);
 
         if (self::response_allows_caching($Response)) {
-            $this->cache[$path][$method]['response'] = $Response;
-            if (!isset($this->cache[$path][$method]['used_instances'])) {
-                $this->cache[$path][$method]['used_instances'] = [];
+
+            $this->cache[$path][$method][$current_user_id]['response'] = $Response;
+
+            if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'])) {
+                $this->cache[$path][$method][$current_user_id]['used_instances'] = [];
             }
             if (!isset($this->cache[$path][$method]['used_classes'])) {
-                $this->cache[$path][$method]['used_classes'] = [];
+                $this->cache[$path][$method][$current_user_id]['used_classes'] = [];
             }
+
+            //the classes involved in the permissions should always be checked
+            if (self::$autohrization_classes === NULL) {
+                if (self::uses_service('AuthorizationProvider')) {
+                    self::$autohrization_classes = self::get_service('AuthorizationProvider')::get_used_active_record_classes();
+                } else {
+                    self::$autohrization_classes = [];
+                }
+            }
+//            if (self::uses_service('AuthorizationProvider')) {
+//                foreach (self::get_service('AuthorizationProvider')::get_used_active_record_classes() as $auth_class_name) {
+//                    $this->cache[$path][$method]['used_classes'][$auth_class_name] = $MetaStore->get_class_last_update_time($auth_class_name);
+//                }
+//            }
+            //the permission related classes should always be checked
+            foreach (self::$autohrization_classes as $auth_class_name) {
+                $this->cache[$path][$method][$current_user_id]['used_classes'][$auth_class_name] = $MetaStore->get_class_last_update_time($auth_class_name);
+            }
+
         }
 
 
@@ -182,14 +230,29 @@ class CachingMiddleware extends Base implements MiddlewareInterface
      */
     public function active_record_read_event_handler(Event $Event) : void
     {
-        $Request = Coroutine::getRequest();
-        $path = $Request->getUri()->getPath();
-        $method = strtoupper($Request->getMethod());
         /**
          * @var ActiveRecord
          */
         $Subject = $Event->get_subject();
         $subject_class = get_class($Subject);
+//        if ($Subject instanceof User && $Subject->get_id() === Container::get_default_current_user_id()) {
+//            //if this is the default user being loaded skip this - will trigger recursion
+//            return;
+//        }
+
+        if ($Subject instanceof User && $Subject->are_permission_checks_disabled()) { //this would mean it was instantiated as part of the login process or CurrentUser
+            return;
+        }
+
+        $Request = Coroutine::getRequest();
+        //$current_user_id = self::get_service('CurrentUser')->get()->get_id();
+        //the above is too slow and we do not really the user, only the user ID which is stored in the JWT
+        $current_user_id = JwtToken::get_user_id_from_request($Request);
+
+        $path = $Request->getUri()->getPath();
+        $method = strtoupper($Request->getMethod());
+
+
 
         $subject_id = $Subject->get_id();
         $MetaStore = self::get_service('OrmMetaStore');
@@ -200,24 +263,27 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         if (!isset($this->cache[$path][$method])) {
             $this->cache[$path][$method] = [];
         }
-        if (!isset($this->cache[$path][$method]['used_instances'])) {
-            $this->cache[$path][$method]['used_instances'] = [];
+        if (!isset($this->cache[$path][$method][$current_user_id])) {
+            $this->cache[$path][$method][$current_user_id] = [];
         }
-        if (!isset($this->cache[$path][$method]['used_classes'])) {
-            $this->cache[$path][$method]['used_classes'] = [];
+        if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'])) {
+            $this->cache[$path][$method][$current_user_id]['used_instances'] = [];
         }
-        if (!isset($this->cache[$path][$method]['used_instances'][$subject_class])) {
-            $this->cache[$path][$method]['used_instances'][$subject_class] = [];
+        if (!isset($this->cache[$path][$method][$current_user_id]['used_classes'])) {
+            $this->cache[$path][$method][$current_user_id]['used_classes'] = [];
+        }
+        if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class])) {
+            $this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class] = [];
         }
         if (!$Subject->is_new()) {
             $subject_lookup_index = (string) Store::form_lookup_index($Subject->get_primary_index());//cant form the primary index back from the lookup index
-            if (!isset($this->cache[$path][$method]['used_instances'][$subject_class][$subject_lookup_index])) {
-                $this->cache[$path][$method]['used_instances'][$subject_class][$subject_lookup_index] = $MetaStore->get_last_update_time_by_object($Subject);
+            if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class][$subject_lookup_index])) {
+                $this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class][$subject_lookup_index] = $MetaStore->get_last_update_time_by_object($Subject);
             }
         }
 
-        if (!isset($this->cache[$path][$method]['used_classes'][$subject_class])) {
-            $this->cache[$path][$method]['used_classes'][$subject_class] = $MetaStore->get_class_last_update_time(get_class($Subject));
+        if (!isset($this->cache[$path][$method][$current_user_id]['used_classes'][$subject_class])) {
+            $this->cache[$path][$method][$current_user_id]['used_classes'][$subject_class] = $MetaStore->get_class_last_update_time(get_class($Subject));
         }
     }
 
