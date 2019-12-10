@@ -245,9 +245,6 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         $path = $Request->getUri()->getPath();
         $method = strtoupper($Request->getMethod());
 
-
-
-        $subject_id = $Subject->get_id();
         $MetaStore = self::get_service('OrmMetaStore');
 
         if (!isset($this->cache[$path])) {
