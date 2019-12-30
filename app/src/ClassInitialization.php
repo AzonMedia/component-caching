@@ -8,8 +8,10 @@ use Guzaba2\Event\Event;
 use Guzaba2\Kernel\Interfaces\ClassInitializationInterface;
 use Guzaba2\Mvc\ExecutorMiddleware;
 use Guzaba2\Orm\ActiveRecord;
+use GuzabaPlatform\Platform\Admin\Controllers\Navigation;
 use GuzabaPlatform\Platform\Application\Middlewares;
 use GuzabaPlatform\RequestCaching\CachingMiddleware;
+use GuzabaPlatform\RequestCaching\AdminEntry;
 
 /**
  * Class ClassInitialization
@@ -29,7 +31,8 @@ class ClassInitialization extends Base implements ClassInitializationInterface
     public static function run_all_initializations() : array
     {
         self::register_middleware();
-        return ['register_middleware'];
+        self::register_admin_component();
+        return ['register_middleware', 'register_admin_component'];
     }
 
     public static function register_middleware() : void
@@ -58,5 +61,18 @@ class ClassInitialization extends Base implements ClassInitializationInterface
         //$Events->add_class_callback(ActiveRecord::class, '_after_save', [$CachingMiddleware, 'active_record_update_event_handler']);
         //$Events->add_class_callback(ActiveRecord::class, '_after_delete', [$CachingMiddleware, 'active_record_update_event_handler']);
 
+    }
+
+    public static function register_admin_component() : void
+    {
+
+        $Callback = static function(Event $Event) : void
+        {
+            //(new AdminEntry($Event->get_subject()->get_response()))();
+            $Controller = $Event->get_subject();
+            $Controller->set_response( (new AdminEntry($Controller->get_response()))() );
+        };
+        $Events = self::get_service('Events');
+        $Events->add_class_callback(Navigation::class, '_after_main', $Callback);
     }
 }
