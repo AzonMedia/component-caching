@@ -1,18 +1,18 @@
 <?php
 declare(strict_types=1);
 
-namespace GuzabaPlatform\RequestCaching;
+namespace GuzabaPlatform\RequestCaching\Hooks;
 
+use Guzaba2\Base\Base;
 use Guzaba2\Http\Body\Structured;
-use Guzaba2\Mvc\AfterControllerMethodHook;
 use GuzabaPlatform\Platform\Application\BaseController;
 use GuzabaPlatform\Platform\Application\GuzabaPlatform;
 use Psr\Http\Message\ResponseInterface;
 
-class AdminEntry extends AfterControllerMethodHook
+class AdminEntry extends Base
 {
 
-    public function process(ResponseInterface $Response) : ResponseInterface
+    public function execute_hook(ResponseInterface $Response) : ResponseInterface
     {
         $Body = $Response->getBody();
         $struct = $Body->getStructure();//no ref here - we adhere to the immutability
