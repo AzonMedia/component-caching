@@ -7,6 +7,7 @@ use Guzaba2\Base\Base;
 use Guzaba2\Http\Body\Structured;
 use GuzabaPlatform\Platform\Application\BaseController;
 use GuzabaPlatform\Platform\Application\GuzabaPlatform;
+use Guzaba2\Translator\Translator as t;
 use Psr\Http\Message\ResponseInterface;
 
 class AdminEntry extends Base
@@ -17,8 +18,9 @@ class AdminEntry extends Base
         $Body = $Response->getBody();
         $struct = $Body->getStructure();//no ref here - we adhere to the immutability
         $struct['links'][] = [
-            'name'          => 'Request Caching',
-            'route'         => GuzabaPlatform::API_ROUTE_PREFIX.'/request-caching',
+            'name'          => t::_('Request Caching'),
+            //'route'         => GuzabaPlatform::API_ROUTE_PREFIX.'/request-caching',
+            'route'         => '/request-caching',
         ];
         $Response = $Response->withBody( new Structured($struct) );
         return $Response;
