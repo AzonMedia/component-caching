@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace GuzabaPlatform\RequestCaching;
 
+use GuzabaPlatform\Components\Base\BaseComponent;
 use Guzaba2\Base\Base;
 use Guzaba2\Event\Event;
 use Guzaba2\Mvc\Controller;
@@ -10,7 +11,6 @@ use Guzaba2\Mvc\ExecutorMiddleware;
 use Guzaba2\Orm\ActiveRecord;
 use GuzabaPlatform\Components\Base\Interfaces\ComponentInitializationInterface;
 use GuzabaPlatform\Components\Base\Interfaces\ComponentInterface;
-use GuzabaPlatform\Components\Base\Traits\ComponentTrait;
 use GuzabaPlatform\Platform\Admin\Controllers\Navigation;
 use GuzabaPlatform\Platform\Application\Middlewares;
 use GuzabaPlatform\RequestCaching\Hooks\AdminEntry;
@@ -19,7 +19,7 @@ use GuzabaPlatform\RequestCaching\Hooks\AdminEntry;
  * Class Component
  * @package Azonmedia\Tags
  */
-class Component extends Base implements ComponentInterface, ComponentInitializationInterface
+class Component extends BaseComponent implements ComponentInterface, ComponentInitializationInterface
 {
 
     protected const CONFIG_DEFAULTS = [
@@ -31,8 +31,6 @@ class Component extends Base implements ComponentInterface, ComponentInitializat
 
     protected const CONFIG_RUNTIME = [];
 
-    use ComponentTrait;
-
     protected const COMPONENT_NAME = "Request Caching";
     //https://components.platform.guzaba.org/component/{vendor}/{component}
     protected const COMPONENT_URL = 'https://components.platform.guzaba.org/component/guzaba-platform/request-caching';
@@ -41,6 +39,7 @@ class Component extends Base implements ComponentInterface, ComponentInitializat
     protected const COMPONENT_VERSION = '0.0.1';//TODO update this to come from the Composer.json file of the component
     protected const VENDOR_NAME = 'Azonmedia';
     protected const VENDOR_URL = 'https://azonmedia.com';
+    protected const ERROR_REFERENCE_URL = 'https://github.com/AzonMedia/component-request-caching/tree/master/docs/ErrorReference/';
 
     private const INITIALIZATION_METHODS = ['register_middleware', 'register_routes'];
 

@@ -21,6 +21,8 @@ class Admin extends BaseController
 
     public function main() : ResponseInterface
     {
-
+        $struct = ['message' => 'not implemented'];
+        $Response = self::get_structured_ok_response($struct);
+        return $Response;
     }
 }
