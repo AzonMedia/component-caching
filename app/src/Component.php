@@ -85,7 +85,12 @@ class Component extends BaseComponent implements ComponentInterface, ComponentIn
      */
     public static function register_routes() : void
     {
-        $meta = ['in_navigation' => TRUE];
-        self::get_service('FrontendRouter')->add_route('/admin/request-caching','@GuzabaPlatform.RequestCaching/Admin.vue', 'Request Caching', $meta);
+        $additional = [
+            'name' => 'Request caching',
+            'meta'  => [
+                'in_navigation' => TRUE,
+            ],
+        ];
+        self::get_service('FrontendRouter')->{'/admin'}->add('request-caching','@GuzabaPlatform.RequestCaching/Admin.vue', $additional);
     }
 }
