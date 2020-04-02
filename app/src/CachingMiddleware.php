@@ -4,11 +4,13 @@ declare(strict_types=1);
 namespace GuzabaPlatform\RequestCaching;
 
 
+use Azonmedia\Exceptions\InvalidArgumentException;
 use Guzaba2\Authorization\Acl\Permission;
 use Guzaba2\Authorization\Role;
 use Guzaba2\Authorization\User;
 use Guzaba2\Base\Base;
 use Guzaba2\Base\Exceptions\LogicException;
+use Guzaba2\Base\Exceptions\RunTimeException;
 use Guzaba2\Coroutine\Coroutine;
 use Guzaba2\Di\Container;
 use Guzaba2\Event\Event;
@@ -30,7 +32,7 @@ use Psr\Log\LogLevel;
 /**
  * Class CachingMiddleware
  * Uses the OrmMetaStore service to access the modification times of the objects.
- * If a request must not be chached it should include an attribute "no_cache".
+ * If a request must not be cached it should include an attribute "no_cache".
  * If a response must not be cached it must include header "pragma: no-cache" or "cache-control: no-cache".
  * @package GuzabaPlatform\RequestCaching
  */
@@ -64,14 +66,17 @@ class CachingMiddleware extends Base implements MiddlewareInterface
     private array $cache = [];
 
 
-    private static ?array $autohrization_classes = NULL;
+    private static ?array $authorization_classes = NULL;
 
     /**
      * Middleware processing method
      * @param ServerRequestInterface $Request
      * @param RequestHandlerInterface $Handler
      * @return ResponseInterface
-     * @throws \Guzaba2\Base\Exceptions\RunTimeException
+     * @throws LogicException
+     * @throws InvalidArgumentException
+     * @throws RunTimeException
+     * @throws \ReflectionException
      */
     public function process(ServerRequestInterface $Request, RequestHandlerInterface $Handler) : ResponseInterface
     {
@@ -82,7 +87,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
 
         //$current_user_id = self::get_service('CurrentUser')->get()->get_id();
         //the above is too slow and we do not really the user, only the user ID which is stored in the JWT
-        $current_user_id = JwtToken::get_user_id_from_request($Request);
+        $current_user_id = JwtToken::get_user_uuid_from_request($Request);
 
         if (self::request_allows_caching($Request)) {
 
@@ -134,7 +139,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
 
                     //check only the permission related classes
                     foreach ($this->cache[$path][$method][$current_user_id]['used_classes'] as $class => $class_last_update_microtime) {
-                        if (!in_array($class, self::$autohrization_classes)) {
+                        if (!in_array($class, self::$authorization_classes)) {
                             continue;
                         }
                         $store_class_last_update_microtime = $MetaStore->get_class_last_update_time($class);
@@ -193,11 +198,11 @@ class CachingMiddleware extends Base implements MiddlewareInterface
             }
 
             //the classes involved in the permissions should always be checked
-            if (self::$autohrization_classes === NULL) {
+            if (self::$authorization_classes === NULL) {
                 if (self::uses_service('AuthorizationProvider')) {
-                    self::$autohrization_classes = self::get_service('AuthorizationProvider')::get_used_active_record_classes();
+                    self::$authorization_classes = self::get_service('AuthorizationProvider')::get_used_active_record_classes();
                 } else {
-                    self::$autohrization_classes = [];
+                    self::$authorization_classes = [];
                 }
             }
 //            if (self::uses_service('AuthorizationProvider')) {
@@ -206,7 +211,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
 //                }
 //            }
             //the permission related classes should always be checked
-            foreach (self::$autohrization_classes as $auth_class_name) {
+            foreach (self::$authorization_classes as $auth_class_name) {
                 $this->cache[$path][$method][$current_user_id]['used_classes'][$auth_class_name] = $MetaStore->get_class_last_update_time($auth_class_name);
             }
 
@@ -219,7 +224,10 @@ class CachingMiddleware extends Base implements MiddlewareInterface
     /**
      * The event handler for ActiveRecord:_after_read
      * @param Event $Event
-     * @throws \Guzaba2\Base\Exceptions\RunTimeException
+     * @throws LogicException
+     * @throws InvalidArgumentException
+     * @throws RunTimeException
+     * @throws \ReflectionException
      */
     public function active_record_read_event_handler(Event $Event) : void
     {
@@ -240,7 +248,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         $Request = Coroutine::getRequest();
         //$current_user_id = self::get_service('CurrentUser')->get()->get_id();
         //the above is too slow and we do not really the user, only the user ID which is stored in the JWT
-        $current_user_id = JwtToken::get_user_id_from_request($Request);
+        $current_user_id = JwtToken::get_user_uuid_from_request($Request);
 
         $path = $Request->getUri()->getPath();
         $method = strtoupper($Request->getMethod());
