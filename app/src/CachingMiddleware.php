@@ -77,6 +77,7 @@ class CachingMiddleware extends Base implements MiddlewareInterface
      * @throws InvalidArgumentException
      * @throws RunTimeException
      * @throws \ReflectionException
+     * @throws \Guzaba2\Coroutine\Exceptions\ContextDestroyedException
      */
     public function process(ServerRequestInterface $Request, RequestHandlerInterface $Handler) : ResponseInterface
     {
