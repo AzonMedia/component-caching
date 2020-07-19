@@ -4,7 +4,7 @@
     "description": "GuzabaPlatform Request Caching component",
     "keywords": ["request caching"],
     "homepage": "https://github.com/AzonMedia/component-request-caching",
-    "license": "BSD-3-Clause",
+    "license": "MIT",
     "minimum-stability": "dev",
     "authors": [
         {
