@@ -247,42 +247,48 @@ class CachingMiddleware extends Base implements MiddlewareInterface
         }
 
         $Request = Coroutine::getRequest();
-        //$current_user_id = self::get_service('CurrentUser')->get()->get_id();
-        //the above is too slow and we do not really the user, only the user ID which is stored in the JWT
-        $current_user_id = JwtToken::get_user_uuid_from_request($Request);
+        //timers/cronjobs dont have $Request (TODO - fix this)
+        if ($Request) {
 
-        $path = $Request->getUri()->getPath();
-        $method = strtoupper($Request->getMethod());
 
-        $MetaStore = self::get_service('OrmMetaStore');
+            //$current_user_id = self::get_service('CurrentUser')->get()->get_id();
+            //the above is too slow and we do not really the user, only the user ID which is stored in the JWT
+            $current_user_id = JwtToken::get_user_uuid_from_request($Request);
 
-        if (!isset($this->cache[$path])) {
-            $this->cache[$path] = [];
-        }
-        if (!isset($this->cache[$path][$method])) {
-            $this->cache[$path][$method] = [];
-        }
-        if (!isset($this->cache[$path][$method][$current_user_id])) {
-            $this->cache[$path][$method][$current_user_id] = [];
-        }
-        if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'])) {
-            $this->cache[$path][$method][$current_user_id]['used_instances'] = [];
-        }
-        if (!isset($this->cache[$path][$method][$current_user_id]['used_classes'])) {
-            $this->cache[$path][$method][$current_user_id]['used_classes'] = [];
-        }
-        if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class])) {
-            $this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class] = [];
-        }
-        if (!$Subject->is_new()) {
-            $subject_lookup_index = (string) Store::form_lookup_index($Subject->get_primary_index());//cant form the primary index back from the lookup index
-            if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class][$subject_lookup_index])) {
-                $this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class][$subject_lookup_index] = $MetaStore->get_last_update_time_by_object($Subject);
+            $path = $Request->getUri()->getPath();
+            $method = strtoupper($Request->getMethod());
+
+            $MetaStore = self::get_service('OrmMetaStore');
+
+            if (!isset($this->cache[$path])) {
+                $this->cache[$path] = [];
             }
-        }
+            if (!isset($this->cache[$path][$method])) {
+                $this->cache[$path][$method] = [];
+            }
+            if (!isset($this->cache[$path][$method][$current_user_id])) {
+                $this->cache[$path][$method][$current_user_id] = [];
+            }
+            if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'])) {
+                $this->cache[$path][$method][$current_user_id]['used_instances'] = [];
+            }
+            if (!isset($this->cache[$path][$method][$current_user_id]['used_classes'])) {
+                $this->cache[$path][$method][$current_user_id]['used_classes'] = [];
+            }
+            if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class])) {
+                $this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class] = [];
+            }
+            if (!$Subject->is_new()) {
+                $subject_lookup_index = (string) Store::form_lookup_index($Subject->get_primary_index());//cant form the primary index back from the lookup index
+                if (!isset($this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class][$subject_lookup_index])) {
+                    $this->cache[$path][$method][$current_user_id]['used_instances'][$subject_class][$subject_lookup_index] = $MetaStore->get_last_update_time_by_object($Subject);
+                }
+            }
 
-        if (!isset($this->cache[$path][$method][$current_user_id]['used_classes'][$subject_class])) {
-            $this->cache[$path][$method][$current_user_id]['used_classes'][$subject_class] = $MetaStore->get_class_last_update_time(get_class($Subject));
+            if (!isset($this->cache[$path][$method][$current_user_id]['used_classes'][$subject_class])) {
+                $this->cache[$path][$method][$current_user_id]['used_classes'][$subject_class] = $MetaStore->get_class_last_update_time(get_class($Subject));
+            }
+
         }
     }
 
